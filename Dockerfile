@@ -4,6 +4,9 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
+# Install system dependency (OpenCV fix)
+RUN apt-get update && apt-get install -y libgl1-mesa-glx
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
