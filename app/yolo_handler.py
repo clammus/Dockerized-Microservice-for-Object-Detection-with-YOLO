@@ -39,7 +39,7 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         output = np.array(raw_output)
 
     predictions = output  # shape: (1, num_detections, 85)
-    rects = []
+    boxes_xyxy = []
     confidences = []
     class_ids = []
 
@@ -56,22 +56,26 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         y = int((y_center - h / 2) * image_shape[0] / input_shape[1])
         w = int(w * image_shape[1] / input_shape[0])
         h = int(h * image_shape[0] / input_shape[1])
+        x2 = x + w
+        y2 = y + h
 
-        rects.append([x, y, w, h])
+        boxes_xyxy.append([x, y, x2, y2])
         confidences.append(float(confidence))
         class_ids.append(class_id)
 
-    indices = cv2.dnn.NMSBoxes(rects, confidences, conf_threshold, nms_threshold)
+    indices = cv2.dnn.NMSBoxes(boxes_xyxy, confidences, conf_threshold, nms_threshold)
 
     boxes = []
     for i in indices:
         i = i[0] if isinstance(i, (list, tuple, np.ndarray)) else i
-        x, y, w, h = rects[i]
+        x1, y1, x2, y2 = boxes_xyxy[i]
+        w = x2 - x1
+        h = y2 - y1
         label = COCO_LABELS[class_ids[i]] if class_ids[i] < len(COCO_LABELS) else f"class_{class_ids[i]}"
         boxes.append({
             "label": label,
-            "x": x,
-            "y": y,
+            "x": x1,
+            "y": y1,
             "width": w,
             "height": h,
             "confidence": confidences[i]
