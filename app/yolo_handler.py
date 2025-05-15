@@ -29,7 +29,7 @@ def preprocess(image: np.ndarray, input_shape=(640, 640)) -> np.ndarray:
     img = np.expand_dims(img, axis=0)   # Add batch dimension
     return img
 
-def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.5):
+def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.5, nms_threshold=0.4):
     # Convert SparseTensor or unexpected types to numpy array
     if hasattr(raw_output, "toarray"):
         output = raw_output.toarray()
@@ -39,7 +39,9 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         output = np.array(raw_output)
 
     predictions = output  # shape: (1, num_detections, 85)
-    boxes = []
+    rects = []
+    confidences = []
+    class_ids = []
 
     for pred in predictions[0]:
         scores = pred[5:]
@@ -55,15 +57,24 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         w = int(w * image_shape[1] / input_shape[0])
         h = int(h * image_shape[0] / input_shape[1])
 
-        label = COCO_LABELS[class_id] if class_id < len(COCO_LABELS) else f"class_{class_id}"
+        rects.append([x, y, w, h])
+        confidences.append(float(confidence))
+        class_ids.append(class_id)
 
+    indices = cv2.dnn.NMSBoxes(rects, confidences, conf_threshold, nms_threshold)
+
+    boxes = []
+    for i in indices:
+        i = i[0] if isinstance(i, (list, tuple, np.ndarray)) else i
+        x, y, w, h = rects[i]
+        label = COCO_LABELS[class_ids[i]] if class_ids[i] < len(COCO_LABELS) else f"class_{class_ids[i]}"
         boxes.append({
             "label": label,
             "x": x,
             "y": y,
             "width": w,
             "height": h,
-            "confidence": float(confidence)
+            "confidence": confidences[i]
         })
 
     return boxes
@@ -73,6 +84,6 @@ def detect(image: np.ndarray) -> list:
     input_name = session.get_inputs()[0].name
     outputs = session.run(None, {input_name: input_tensor})
 
-   # Safe access: convert SparseTensor to array if needed
+    # Safe access: convert SparseTensor to array if needed
     raw_output = outputs[0]
     return postprocess(raw_output, image.shape[:2])
