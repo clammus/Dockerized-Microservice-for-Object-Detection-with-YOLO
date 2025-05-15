@@ -29,8 +29,14 @@ def preprocess(image: np.ndarray, input_shape=(640, 640)) -> np.ndarray:
     img = np.expand_dims(img, axis=0)   # Add batch dimension
     return img
 
-def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.85, nms_threshold=0.2, max_detections=10):
-    # Convert SparseTensor or unexpected types to numpy array
+def postprocess(
+    raw_output,
+    image_shape,
+    input_shape=(640, 640),
+    conf_threshold=0.85,
+    nms_threshold=0.2,
+    max_detections=10
+):
     if hasattr(raw_output, "toarray"):
         output = raw_output.toarray()
     elif hasattr(raw_output, "todense"):
@@ -59,7 +65,7 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         x2 = x + w
         y2 = y + h
 
-        # Küçük kutuları filtrele (gürültü olabilir)
+        # Filter out tiny boxes
         if w < 20 or h < 20:
             continue
 
@@ -72,18 +78,22 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
     boxes = []
     for idx in indices[:max_detections]:
         i = idx[0] if isinstance(idx, (list, tuple, np.ndarray)) else idx
-        x1, y1, x2, y2 = boxes_xyxy[i]
-        w = x2 - x1
-        h = y2 - y1
-        label = COCO_LABELS[class_ids[i]] if class_ids[i] < len(COCO_LABELS) else f"class_{class_ids[i]}"
-        boxes.append({
-            "label": label,
-            "x": x1,
-            "y": y1,
-            "width": w,
-            "height": h,
-            "confidence": confidences[i]
-        })
+        conf = confidences[i]
+
+        # Double-check confidence threshold after NMS
+        if conf >= conf_threshold:
+            x1, y1, x2, y2 = boxes_xyxy[i]
+            w = x2 - x1
+            h = y2 - y1
+            label = COCO_LABELS[class_ids[i]] if class_ids[i] < len(COCO_LABELS) else f"class_{class_ids[i]}"
+            boxes.append({
+                "label": label,
+                "x": x1,
+                "y": y1,
+                "width": w,
+                "height": h,
+                "confidence": conf
+            })
 
     return boxes
 
@@ -91,6 +101,11 @@ def detect(image: np.ndarray) -> list:
     input_tensor = preprocess(image)
     input_name = session.get_inputs()[0].name
     outputs = session.run(None, {input_name: input_tensor})
-
     raw_output = outputs[0]
-    return postprocess(raw_output, image.shape[:2])
+
+    return postprocess(
+        raw_output,
+        image.shape[:2],
+        conf_threshold=0.85,
+        nms_threshold=0.2
+    )
