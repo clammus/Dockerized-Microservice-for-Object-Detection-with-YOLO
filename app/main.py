@@ -23,8 +23,7 @@ async def detect_objects(
     if label:
         boxes = [box for box in boxes if box["label"] == label]
 
-    # Filter out low-confidence boxes
-    boxes = [box for box in boxes if box["confidence"] >= 0.85]
+ 
 
     # Draw boxes on image
     output_img = draw_boxes(image, boxes)

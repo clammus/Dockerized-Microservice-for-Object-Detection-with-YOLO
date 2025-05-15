@@ -33,9 +33,9 @@ def postprocess(
     raw_output,
     image_shape,
     input_shape=(640, 640),
-    conf_threshold=0.85,
-    nms_threshold=0.2,
-    max_detections=10
+    conf_threshold=0.7,
+    nms_threshold=0.2
+    
 ):
     if hasattr(raw_output, "toarray"):
         output = raw_output.toarray()
@@ -110,6 +110,6 @@ def detect(image: np.ndarray) -> list:
     return postprocess(
         raw_output,
         image.shape[:2],
-        conf_threshold=0.85,
+        conf_threshold=0.7,
         nms_threshold=0.2
     )
