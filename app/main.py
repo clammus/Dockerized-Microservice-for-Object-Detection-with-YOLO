@@ -7,8 +7,11 @@ from typing import Optional
 
 app = FastAPI()
 
-@app.post("/detect/{label}")
-async def detect_objects(label: Optional[str] = None, file: UploadFile = File(...)):
+@app.post("/detect")
+async def detect_objects(
+    file: UploadFile = File(...),
+    label: Optional[str] = None
+):
     # Read the uploaded image
     image_bytes = await file.read()
     image = decode_image(image_bytes)
