@@ -76,11 +76,14 @@ def postprocess(
     indices = cv2.dnn.NMSBoxes(boxes_xyxy, confidences, conf_threshold, nms_threshold)
 
     boxes = []
-    for idx in indices[:max_detections]:
-        i = idx[0] if isinstance(idx, (list, tuple, np.ndarray)) else idx
+
+    # Flatten index list if it's a list of lists/tuples
+    flat_indices = [i[0] if isinstance(i, (list, tuple, np.ndarray)) else i for i in indices]
+
+    for i in flat_indices:
         conf = confidences[i]
 
-        # Double-check confidence threshold after NMS
+        # Final confidence check
         if conf >= conf_threshold:
             x1, y1, x2, y2 = boxes_xyxy[i]
             w = x2 - x1
@@ -96,6 +99,7 @@ def postprocess(
             })
 
     return boxes
+
 
 def detect(image: np.ndarray) -> list:
     input_tensor = preprocess(image)
