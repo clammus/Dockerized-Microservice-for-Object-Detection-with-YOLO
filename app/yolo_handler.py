@@ -29,7 +29,7 @@ def preprocess(image: np.ndarray, input_shape=(640, 640)) -> np.ndarray:
     img = np.expand_dims(img, axis=0)   # Add batch dimension
     return img
 
-def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.7, nms_threshold=0.3):
+def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.85, nms_threshold=0.2):
     # Convert SparseTensor or unexpected types to numpy array
     if hasattr(raw_output, "toarray"):
         output = raw_output.toarray()
