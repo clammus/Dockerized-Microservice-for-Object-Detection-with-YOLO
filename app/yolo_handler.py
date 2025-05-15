@@ -29,7 +29,7 @@ def preprocess(image: np.ndarray, input_shape=(640, 640)) -> np.ndarray:
     img = np.expand_dims(img, axis=0)   # Add batch dimension
     return img
 
-def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.85, nms_threshold=0.2):
+def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.85, nms_threshold=0.2, max_detections=10):
     # Convert SparseTensor or unexpected types to numpy array
     if hasattr(raw_output, "toarray"):
         output = raw_output.toarray()
@@ -59,6 +59,10 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
         x2 = x + w
         y2 = y + h
 
+        # Küçük kutuları filtrele (gürültü olabilir)
+        if w < 20 or h < 20:
+            continue
+
         boxes_xyxy.append([x, y, x2, y2])
         confidences.append(float(confidence))
         class_ids.append(class_id)
@@ -66,8 +70,8 @@ def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=
     indices = cv2.dnn.NMSBoxes(boxes_xyxy, confidences, conf_threshold, nms_threshold)
 
     boxes = []
-    for i in indices:
-        i = i[0] if isinstance(i, (list, tuple, np.ndarray)) else i
+    for idx in indices[:max_detections]:
+        i = idx[0] if isinstance(idx, (list, tuple, np.ndarray)) else idx
         x1, y1, x2, y2 = boxes_xyxy[i]
         w = x2 - x1
         h = y2 - y1
@@ -88,6 +92,5 @@ def detect(image: np.ndarray) -> list:
     input_name = session.get_inputs()[0].name
     outputs = session.run(None, {input_name: input_tensor})
 
-    # Safe access: convert SparseTensor to array if needed
     raw_output = outputs[0]
     return postprocess(raw_output, image.shape[:2])
