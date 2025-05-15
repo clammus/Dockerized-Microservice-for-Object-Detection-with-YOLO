@@ -1,44 +1,64 @@
-import onnxruntime
 import numpy as np
+import onnxruntime as ort
 import cv2
 
-# Load ONNX model (runs only once when file is imported)
-session = onnxruntime.InferenceSession("models/yolov5s.onnx", providers=["CPUExecutionProvider"])
+# COCO class labels (80 class)
+COCO_LABELS = [
+    "person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck",
+    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
+    "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
+    "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+    "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa",
+    "pottedplant", "bed", "dining table", "toilet", "tvmonitor", "laptop", "mouse",
+    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+    "toothbrush"
+]
 
-def detect(image: np.ndarray) -> list:
-    """Run YOLOv5 inference on the image and return detected objects."""
-    # Resize and normalize the image
-    input_image = cv2.resize(image, (640, 640))
-    input_image = input_image[:, :, ::-1].transpose(2, 0, 1)  # BGR → RGB, HWC → CHW
-    input_image = np.ascontiguousarray(input_image, dtype=np.float32) / 255.0
-    input_tensor = input_image[np.newaxis, :]
+# Load ONNX model
+session = ort.InferenceSession("models/yolov5s.onnx")
 
-    # Run inference
-    outputs = session.run(None, {session.get_inputs()[0].name: input_tensor})[0]
+def preprocess(image: np.ndarray, input_shape=(640, 640)) -> np.ndarray:
+    resized = cv2.resize(image, input_shape)
+    img = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32)
+    img /= 255.0
+    img = np.transpose(img, (2, 0, 1))  # HWC to CHW
+    img = np.expand_dims(img, axis=0)   # Add batch dimension
+    return img
 
-    # Parse results
-    detections = []
-    for det in outputs[0]:
-        confidence = det[4]
-        if confidence < 0.4:
+def postprocess(raw_output, image_shape, input_shape=(640, 640), conf_threshold=0.5):
+    # Convert SparseTensor or unexpected types to numpy array
+    if hasattr(raw_output, "toarray"):
+        output = raw_output.toarray()
+    elif hasattr(raw_output, "todense"):
+        output = np.asarray(raw_output.todense())
+    else:
+        output = np.array(raw_output)
+
+    predictions = output  # shape: (1, num_detections, 85)
+    boxes = []
+
+    for pred in predictions[0]:
+        scores = pred[5:]
+        class_id = int(np.argmax(scores))
+        confidence = scores[class_id]
+
+        if confidence < conf_threshold:
             continue
 
-        class_scores = det[5:]
-        class_id = int(np.argmax(class_scores))
-        class_conf = class_scores[class_id]
+        x_center, y_center, w, h = pred[0:4]
+        x = int((x_center - w / 2) * image_shape[1] / input_shape[0])
+        y = int((y_center - h / 2) * image_shape[0] / input_shape[1])
+        w = int(w * image_shape[1] / input_shape[0])
+        h = int(h * image_shape[0] / input_shape[1])
 
-        if class_conf < 0.4:
-            continue
+        label = COCO_LABELS[class_id] if class_id < len(COCO_LABELS) else f"class_{class_id}"
 
-        # Convert box format
-        cx, cy, w, h = det[0:4]
-        x = int((cx - w / 2) * image.shape[1] / 640)
-        y = int((cy - h / 2) * image.shape[0] / 640)
-        w = int(w * image.shape[1] / 640)
-        h = int(h * image.shape[0] / 640)
-
-        detections.append({
-            "label": f"class_{class_id}",
+        boxes.append({
+            "label": label,
             "x": x,
             "y": y,
             "width": w,
@@ -46,4 +66,13 @@ def detect(image: np.ndarray) -> list:
             "confidence": float(confidence)
         })
 
-    return detections
+    return boxes
+
+def detect(image: np.ndarray) -> list:
+    input_tensor = preprocess(image)
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: input_tensor})
+
+   # Safe access: convert SparseTensor to array if needed
+    raw_output = outputs[0]
+    return postprocess(raw_output, image.shape[:2])
